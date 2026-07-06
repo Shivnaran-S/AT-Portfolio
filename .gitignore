@@ -1,0 +1,53 @@
+# =============================================
+# AT-PORTFOLIO .gitignore
+# =============================================
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment variables
+.env
+
+# ---------- Node.js ----------
+node_modules/
+frontend/dist/
+
+# ---------- IDE ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ---------- ML Models ----------
+# Stable-Baselines3 saves models as .zip
+backend/app/rl/models/*.zip
+
+# ---------- Database ----------
+*.db
+*.sqlite3
+
+# ---------- Logs ----------
+*.log
+
+# ---------- Testing ----------
+.pytest_cache/
+.coverage
+htmlcov/
