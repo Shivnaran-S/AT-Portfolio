@@ -11,11 +11,14 @@ const portfolioStore = usePortfolioStore()
 
 const capital = ref('')
 const step = ref('input') // 'input' | 'optimizing' | 'result'
+const isChecking = ref(true)
 
 onMounted(async () => {
   await authStore.fetchUser()
   if (authStore.hasPortfolio) {
     router.push('/')
+  } else {
+    isChecking.value = false
   }
 })
 
@@ -49,8 +52,13 @@ function formatCurrency(value) {
     <AppSidebar />
 
     <main class="main-content">
+      <div v-if="isChecking" class="loading-overlay">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+      </div>
+      
       <!-- Step 1: Capital Input -->
-      <div v-if="step === 'input'" class="portfolio-init">
+      <div v-else-if="step === 'input'" class="portfolio-init">
         <div class="init-card">
           <div class="init-icon">🧠</div>
           <h1>Initialize Your Portfolio</h1>

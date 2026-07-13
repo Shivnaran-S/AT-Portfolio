@@ -43,6 +43,24 @@ async def initialize_portfolio(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
+    # Auto-create BUY orders for the initial allocation
+    if result["allocations"]:
+        from app.services.trading_service import TradingService
+        trading_service = TradingService(db)
+        order_data = [
+            {
+                "stock_symbol": a["stock_symbol"],
+                "order_type": "BUY",
+                "quantity": a["target_quantity"],
+            }
+            for a in result["allocations"]
+            if a["target_quantity"] > 0
+        ]
+        if order_data:
+            await trading_service.create_orders_from_plan(
+                result["portfolio_id"], order_data
+            )
+
     return PortfolioAllocationResponse(
         portfolio_id=result["portfolio_id"],
         total_capital=result["total_capital"],

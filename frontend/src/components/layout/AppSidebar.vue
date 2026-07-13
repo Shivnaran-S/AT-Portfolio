@@ -11,6 +11,7 @@ const navItems = [
   { name: 'Portfolio', path: '/portfolio', icon: '💼' },
   { name: 'Trading', path: '/trading', icon: '📈' },
   { name: 'Demo', path: '/demo', icon: '🎮' },
+  { name: 'Backtest', path: '/backtest', icon: '📋' },
 ]
 
 function handleLogout() {

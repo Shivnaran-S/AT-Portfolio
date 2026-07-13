@@ -1,12 +1,16 @@
 """
 Trading router — algorithmic trade execution and order management.
+
+Live trading is step-by-step: the agent fetches real prices every 5 minutes
+and makes independent decisions at each tick. The POST /execute endpoint
+starts this as a background task and returns immediately.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.database import get_db
+from app.database import get_db, async_session
 from app.models.user import User
 from app.models.portfolio import Portfolio
 from app.routers.dependencies import get_current_user
@@ -22,10 +26,13 @@ async def execute_trades(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Execute all pending orders using the PPO algorithmic trading agent.
+    Start step-by-step algorithmic trade execution.
 
-    The agent determines optimal timing and order slicing for each trade,
-    executing buy/sell orders with minimal market impact.
+    The PPO agent will fetch real prices every 5 minutes and make
+    independent trading decisions at each tick. All allocated shares
+    will be purchased by market close.
+
+    Returns immediately — poll GET /execution-status for progress.
     """
     # Get user's portfolio
     query = select(Portfolio).where(Portfolio.user_id == current_user.id)
@@ -39,15 +46,42 @@ async def execute_trades(
         )
 
     service = TradingService(db)
-    executed = await service.execute_orders(portfolio.id)
+    try:
+        result = await service.start_execution(
+            portfolio_id=portfolio.id,
+            session_factory=async_session,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
 
-    if not executed:
-        return {"message": "No pending orders to execute.", "orders": []}
+    return result
 
-    return {
-        "message": f"Executed {len(executed)} orders.",
-        "orders": executed,
-    }
+
+@router.get("/execution-status")
+async def get_execution_status(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get the current status of a running or completed live execution.
+
+    Returns progress, executed trades so far, and final status.
+    """
+    query = select(Portfolio).where(Portfolio.user_id == current_user.id)
+    result = await db.execute(query)
+    portfolio = result.scalar_one_or_none()
+
+    if portfolio is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No portfolio found.",
+        )
+
+    status_data = TradingService.get_execution_status(portfolio.id)
+    return status_data
 
 
 @router.get("/orders", response_model=list[OrderResponse])

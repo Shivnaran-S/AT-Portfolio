@@ -76,7 +76,8 @@ class PortfolioService:
         await self.db.flush()  # Get the portfolio ID
 
         # Compute allocations and create holdings + targets
-        allocations = []
+        # First pass: floor-based allocation
+        alloc_data = []  # (index, symbol, weight, price, target_qty)
         total_allocated = 0.0
 
         for i, stock in enumerate(STOCK_UNIVERSE):
@@ -91,6 +92,15 @@ class PortfolioService:
             target_quantity = math.floor(target_amount / price)
             actual_amount = target_quantity * price
             total_allocated += actual_amount
+            alloc_data.append((i, symbol, weight, price, target_quantity))
+
+        # Build final allocation lookup directly from target_qty
+        final_qty_map = {item[1]: item[4] for item in alloc_data}
+
+        allocations = []
+        for i, symbol, weight, price, target_quantity in sorted(alloc_data, key=lambda x: x[0]):
+            final_qty = final_qty_map.get(symbol, target_quantity)
+            actual_amount = final_qty * price
 
             # Create holding (initially 0 shares — trading fills them)
             holding = Holding(
@@ -106,7 +116,7 @@ class PortfolioService:
                 portfolio_id=portfolio.id,
                 stock_symbol=symbol,
                 weight=Decimal(str(round(weight, 6))),
-                target_quantity=target_quantity,
+                target_quantity=final_qty,
                 target_amount=Decimal(str(round(actual_amount, 2))),
             )
             self.db.add(target)
@@ -118,7 +128,7 @@ class PortfolioService:
                 "sector": stock_info.get("sector", ""),
                 "weight": round(weight, 6),
                 "target_amount": round(actual_amount, 2),
-                "target_quantity": target_quantity,
+                "target_quantity": final_qty,
                 "current_price": round(price, 2),
             })
 
@@ -352,8 +362,10 @@ class PortfolioService:
         weights = self._get_portfolio_weights()
 
         # Calculate new target allocations and order differences
-        orders = []
+        # First pass: floor-based allocation
+        alloc_data = []  # (i, symbol, weight, price, target_qty)
         current_holdings = {h.stock_symbol: h.quantity for h in holdings}
+        total_allocated = 0.0
 
         for i, stock in enumerate(STOCK_UNIVERSE):
             symbol = stock["symbol"]
@@ -365,6 +377,15 @@ class PortfolioService:
 
             target_amount = total_value * weight
             target_quantity = math.floor(target_amount / price)
+            total_allocated += target_quantity * price
+            alloc_data.append((i, symbol, weight, price, target_quantity))
+
+        # Build final allocation lookup directly from target_qty
+        final_qty_map = {item[1]: item[4] for item in alloc_data}
+
+        orders = []
+        for i, symbol, weight, price, _ in sorted(alloc_data, key=lambda x: x[0]):
+            target_quantity = final_qty_map.get(symbol, 0)
             current_quantity = current_holdings.get(symbol, 0)
             diff = target_quantity - current_quantity
 
@@ -379,14 +400,14 @@ class PortfolioService:
             if target:
                 target.weight = Decimal(str(round(weight, 6)))
                 target.target_quantity = target_quantity
-                target.target_amount = Decimal(str(round(target_amount, 2)))
+                target.target_amount = Decimal(str(round(target_quantity * price, 2)))
             else:
                 target = TargetAllocation(
                     portfolio_id=portfolio.id,
                     stock_symbol=symbol,
                     weight=Decimal(str(round(weight, 6))),
                     target_quantity=target_quantity,
-                    target_amount=Decimal(str(round(target_amount, 2))),
+                    target_amount=Decimal(str(round(target_quantity * price, 2))),
                 )
                 self.db.add(target)
 

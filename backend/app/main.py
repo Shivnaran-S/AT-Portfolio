@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import engine, Base
-from app.routers import auth, market, portfolio, trading, demo
+from app.routers import auth, market, portfolio, trading, demo, backtest
 
 # Configure logging
 logging.basicConfig(
@@ -77,6 +77,7 @@ app.include_router(market.router)
 app.include_router(portfolio.router)
 app.include_router(trading.router)
 app.include_router(demo.router)
+app.include_router(backtest.router)
 
 
 # ── Health Check ──────────────────────────────────────────────────────

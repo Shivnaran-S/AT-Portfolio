@@ -38,6 +38,12 @@ const routes = [
     component: () => import('../views/DemoView.vue'),
     meta: { guest: true }, // No auth required for demo
   },
+  {
+    path: '/backtest',
+    name: 'Backtest',
+    component: () => import('../views/BacktestView.vue'),
+    meta: { guest: true }, // No auth required for backtesting
+  },
 ]
 
 const router = createRouter({
@@ -51,7 +57,7 @@ router.beforeEach((to, from, next) => {
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({ name: 'Login' })
-  } else if (to.meta.guest && authStore.isAuthenticated && to.name !== 'Demo') {
+  } else if (to.meta.guest && authStore.isAuthenticated && to.name !== 'Demo' && to.name !== 'Backtest') {
     next({ name: 'Dashboard' })
   } else {
     next()

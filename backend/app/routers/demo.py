@@ -61,15 +61,33 @@ async def optimize_demo(request: DemoSessionRequest):
 @router.post("/trade")
 async def trade_demo(request: DemoSessionRequest):
     """
-    Run a simulated trading session.
+    Start a compressed trading simulation.
 
-    The PPO trading agent executes buy/sell orders with optimal timing
-    and order slicing in a compressed simulated market environment.
+    The PPO trading agent plans execution slices for all orders, then
+    executes them over the configured simulation duration (default: 5 min).
+    Returns immediately with simulation metadata.
+
+    Poll GET /api/demo/simulation-status/{session_id} for progress.
     """
     try:
-        result = _demo_service.run_trading_simulation(request.session_id)
+        result = _demo_service.start_trading_simulation(request.session_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return result
+
+
+@router.get("/simulation-status/{session_id}")
+async def get_simulation_status(session_id: str):
+    """
+    Get the current status of a running or completed trading simulation.
+
+    Returns progress percentage, executed slices so far, and the final
+    execution report when complete.
+    """
+    try:
+        result = _demo_service.get_simulation_status(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     return result
 
 
@@ -98,13 +116,14 @@ async def rebalance_demo(request: DemoSessionRequest):
     """
     Rebalance the demo portfolio.
 
-    Runs optimization first, then executes the required trades.
+    Runs optimization first, then starts a compressed trading simulation.
+    Returns immediately — poll simulation-status for progress.
     """
     try:
         # First optimize
         opt_result = _demo_service.optimize_portfolio(request.session_id)
-        # Then trade
-        trade_result = _demo_service.run_trading_simulation(request.session_id)
+        # Then start simulation
+        trade_result = _demo_service.start_trading_simulation(request.session_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

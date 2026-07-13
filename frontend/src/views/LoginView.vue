@@ -70,9 +70,12 @@ async function handleLogin() {
         <router-link to="/signup">Create one</router-link>
       </p>
 
-      <div class="text-center mt-lg">
+      <div class="text-center mt-lg flex justify-center gap-md" style="display: flex; justify-content: center; gap: var(--space-md);">
         <router-link to="/demo" class="btn btn-gold">
           🎮 Try Demo Mode
+        </router-link>
+        <router-link to="/backtest" class="btn btn-secondary">
+          📋 Backtesting
         </router-link>
       </div>
     </div>

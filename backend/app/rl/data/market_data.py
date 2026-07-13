@@ -181,6 +181,49 @@ class MarketDataService:
             logger.error(f"Error fetching history for {symbol}: {e}")
             return pd.DataFrame()
 
+    def get_intraday_prices(
+        self, symbol: str, interval: str = "5m", period: str = "60d"
+    ) -> np.ndarray | None:
+        """
+        Fetch intraday close prices for a single stock.
+
+        Uses yfinance's intraday data. For 5-min interval, yfinance
+        provides up to ~60 days of data for free.
+
+        Args:
+            symbol: Ticker symbol (e.g., "TCS.NS").
+            interval: Candle interval (e.g., "5m", "1m", "15m").
+            period: How far back to fetch (e.g., "1d", "5d", "60d").
+
+        Returns:
+            numpy array of close prices, or None if data is unavailable.
+        """
+        try:
+            data = yf.download(
+                symbol, period=period, interval=interval,
+                progress=False, threads=False,
+            )
+            if data.empty:
+                logger.warning(f"No intraday data for {symbol}.")
+                return None
+
+            close = data["Close"]
+            # yfinance may return a DataFrame with symbol column
+            if isinstance(close, pd.DataFrame):
+                close = close.iloc[:, 0]
+            prices = close.dropna().values.astype(np.float64)
+
+            if len(prices) < 2:
+                logger.warning(
+                    f"Insufficient intraday data for {symbol}: {len(prices)} points."
+                )
+                return None
+
+            return prices
+        except Exception as e:
+            logger.error(f"Error fetching intraday prices for {symbol}: {e}")
+            return None
+
     # ── Technical Indicators ──────────────────────────────────────────
 
     @staticmethod
