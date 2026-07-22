@@ -60,6 +60,35 @@ async def execute_trades(
     return result
 
 
+@router.post("/stop")
+async def stop_execution(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Stop a running live algorithmic trade execution.
+    """
+    query = select(Portfolio).where(Portfolio.user_id == current_user.id)
+    result = await db.execute(query)
+    portfolio = result.scalar_one_or_none()
+
+    if portfolio is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No portfolio found.",
+        )
+
+    service = TradingService(db)
+    try:
+        result = service.stop_execution(portfolio.id)
+        return result
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+
 @router.get("/execution-status")
 async def get_execution_status(
     current_user: User = Depends(get_current_user),

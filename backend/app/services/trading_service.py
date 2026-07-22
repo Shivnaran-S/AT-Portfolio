@@ -183,6 +183,17 @@ class TradingService:
             "step_interval_seconds": _LIVE_STEP_INTERVAL,
         }
 
+    def stop_execution(self, portfolio_id: str) -> dict:
+        """
+        Gracefully stop a running live execution.
+        """
+        exec_state = _live_executions.get(portfolio_id)
+        if not exec_state or exec_state.get("status") != "running":
+            raise ValueError("No running execution found for this portfolio.")
+            
+        exec_state["stop_requested"] = True
+        return {"status": "stopping", "message": "Stop requested. The execution will halt shortly."}
+
     async def _run_live_execution(
         self,
         portfolio_id: str,
@@ -315,9 +326,19 @@ class TradingService:
             if is_last:
                 break
 
-            # Wait for next tick (5 minutes)
+            # Wait for next tick (5 minutes), polling for stop flag every second
             if step < total_steps - 1:
-                await asyncio.sleep(_LIVE_STEP_INTERVAL)
+                interrupted = False
+                for _ in range(_LIVE_STEP_INTERVAL):
+                    if exec_state.get("stop_requested"):
+                        interrupted = True
+                        break
+                    await asyncio.sleep(1)
+                    
+                if interrupted:
+                    logger.info(f"Execution stopped by user for portfolio {portfolio_id}")
+                    exec_state["status"] = "stopped"
+                    return
 
         # ── Execution complete ──
         exec_state["status"] = "completed"

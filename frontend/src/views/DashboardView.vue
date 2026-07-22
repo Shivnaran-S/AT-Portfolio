@@ -8,6 +8,8 @@ import StatCard from '../components/common/StatCard.vue'
 import HoldingsTable from '../components/dashboard/HoldingsTable.vue'
 import Modal from '../components/common/Modal.vue'
 
+import api from '../composables/useApi'
+
 const router = useRouter()
 const authStore = useAuthStore()
 const portfolioStore = usePortfolioStore()
@@ -18,16 +20,38 @@ const fundsAmount = ref('')
 const fundsError = ref('')
 const fundsLoading = ref(false)
 
+const orders = ref([])
+const expandedOrders = ref(new Set())
+
 // Check if user has a portfolio
 onMounted(async () => {
   await authStore.fetchUser()
   if (authStore.hasPortfolio) {
     await portfolioStore.fetchStatus()
+    await loadOrders()
   } else {
     // Redirect to portfolio initialization
     router.push('/portfolio')
   }
 })
+
+async function loadOrders() {
+  try {
+    const response = await api.get('/trading/orders')
+    // Filter to only show orders that have been executed at least partially
+    orders.value = response.data.filter(o => o.slices && o.slices.length > 0)
+  } catch (err) {
+    console.error('Failed to load orders:', err)
+  }
+}
+
+function toggleOrder(symbol) {
+  if (expandedOrders.value.has(symbol)) {
+    expandedOrders.value.delete(symbol)
+  } else {
+    expandedOrders.value.add(symbol)
+  }
+}
 
 const status = computed(() => portfolioStore.status)
 
@@ -43,6 +67,20 @@ function formatPercent(value) {
   if (!value) return '0.00%'
   const sign = value > 0 ? '+' : ''
   return sign + value.toFixed(2) + '%'
+}
+
+function formatDateTime(isoString) {
+  if (!isoString) return '—'
+  const date = new Date(isoString)
+  return date.toLocaleString('en-IN', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  })
 }
 
 function openFundsModal(action) {
@@ -64,9 +102,17 @@ async function handleFunds() {
 
   let result
   if (fundsAction.value === 'add') {
-    result = await portfolioStore.addFunds(amount)
+    showFundsModal.value = false
+    router.push(`/portfolio?action=add_funds&amount=${amount}`)
+    return
   } else {
-    result = await portfolioStore.withdrawFunds(amount)
+    if (amount > status.value.cash_balance) {
+      showFundsModal.value = false
+      router.push(`/portfolio?action=withdraw_funds&amount=${amount}`)
+      return
+    } else {
+      result = await portfolioStore.withdrawFunds(amount)
+    }
   }
 
   if (result) {
@@ -78,11 +124,8 @@ async function handleFunds() {
   fundsLoading.value = false
 }
 
-async function handleRebalance() {
-  const result = await portfolioStore.rebalance()
-  if (result) {
-    router.push('/trading')
-  }
+function handleRebalance() {
+  router.push('/portfolio?action=rebalance')
 }
 </script>
 
@@ -164,6 +207,50 @@ async function handleRebalance() {
           </h2>
           <HoldingsTable :holdings="status.holdings" />
         </div>
+
+        <!-- Trading Results -->
+        <div v-if="orders.length > 0" class="card mt-lg">
+          <h2 style="margin-bottom:var(--space-lg);font-size:var(--font-size-xl);">
+            Trade Execution History
+          </h2>
+          <div v-for="order in orders" :key="order.id" class="execution-card mb-md"
+            @click="toggleOrder(order.id)"
+            style="cursor:pointer;"
+          >
+            <div class="flex justify-between items-center">
+              <div class="flex items-center gap-md">
+                <span class="badge" :class="order.order_type === 'BUY' ? 'badge-success' : 'badge-danger'">
+                  {{ order.order_type }}
+                </span>
+                <strong>{{ order.stock_symbol }}</strong>
+              </div>
+              <div class="flex items-center gap-md">
+                <span>{{ order.filled_quantity }} / {{ order.total_quantity }} shares filled ({{ order.slices?.length || 0 }} slices)</span>
+                <span class="expand-arrow" :class="{ expanded: expandedOrders.has(order.id) }">▸</span>
+              </div>
+            </div>
+            
+            <!-- Expandable slice details -->
+            <div v-if="expandedOrders.has(order.id)" class="slice-details mt-sm">
+              <table class="slice-table">
+                <thead>
+                  <tr>
+                    <th>Date & Time</th>
+                    <th>Quantity</th>
+                    <th>Execution Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="slice in order.slices" :key="slice.id">
+                    <td class="text-secondary">{{ formatDateTime(slice.executed_at) }}</td>
+                    <td>{{ slice.quantity }}</td>
+                    <td>{{ formatCurrency(slice.price) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- No Portfolio State -->
@@ -218,3 +305,46 @@ async function handleRebalance() {
     </Modal>
   </div>
 </template>
+
+<style scoped>
+.execution-card {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  transition: background 0.2s ease;
+}
+.execution-card:hover {
+  background: var(--bg-glass-hover, rgba(255,255,255,0.05));
+}
+.expand-arrow {
+  display: inline-block;
+  transition: transform 0.2s ease;
+  font-size: 1.2rem;
+}
+.expand-arrow.expanded {
+  transform: rotate(90deg);
+}
+.slice-details {
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--space-sm);
+}
+.slice-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.slice-table th,
+.slice-table td {
+  padding: var(--space-sm);
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+.slice-table th {
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: var(--font-size-sm);
+}
+.slice-table tr:last-child td {
+  border-bottom: none;
+}
+</style>

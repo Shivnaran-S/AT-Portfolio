@@ -14,6 +14,19 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   const loading = ref(false)
   const error = ref(null)
 
+  function formatError(err, defaultMsg) {
+    const detail = err.response?.data?.detail
+    if (Array.isArray(detail)) {
+      // Map FastAPI validation errors to a cleaner string
+      const msgs = detail.map(d => {
+        const field = d.loc && d.loc.length > 1 ? d.loc[d.loc.length - 1] : 'field'
+        return `${field}: ${d.msg}`
+      })
+      return msgs.join(', ') || defaultMsg
+    }
+    return detail || defaultMsg
+  }
+
   // ── Getters ────────────────────────────────────────────────────
   const totalValue = computed(() => {
     if (!status.value) return 0
@@ -24,15 +37,30 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
   // ── Actions ────────────────────────────────────────────────────
 
-  async function initializePortfolio(capital) {
+  async function previewInitialize(capital) {
     loading.value = true
     error.value = null
     try {
-      const response = await api.post('/portfolio/initialize', { capital })
+      const response = await api.post('/portfolio/initialize-preview', { capital })
       allocation.value = response.data
       return response.data
     } catch (err) {
-      error.value = err.response?.data?.detail || 'Failed to initialize portfolio.'
+      error.value = formatError(err, 'Failed to preview initialization.')
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function confirmInitialize(plan) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.post('/portfolio/initialize', plan)
+      allocation.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = formatError(err, 'Failed to initialize portfolio.')
       return null
     } finally {
       loading.value = false
@@ -47,7 +75,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       status.value = response.data
       return response.data
     } catch (err) {
-      error.value = err.response?.data?.detail || 'Failed to fetch portfolio status.'
+      error.value = formatError(err, 'Failed to fetch portfolio status.')
       return null
     } finally {
       loading.value = false
@@ -59,9 +87,41 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     error.value = null
     try {
       const response = await api.post('/portfolio/add-funds', { amount })
+      await fetchStatus()
       return response.data
     } catch (err) {
-      error.value = err.response?.data?.detail || 'Failed to add funds.'
+      error.value = formatError(err, 'Failed to add funds.')
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function previewWithdraw(amount) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.post('/portfolio/withdraw-preview', { amount })
+      rebalancePlan.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = formatError(err, 'Failed to preview withdrawal.')
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function confirmWithdraw(amount, plan) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.post('/portfolio/withdraw-funds', { plan, amount })
+      rebalancePlan.value = null
+      await fetchStatus()
+      return response.data
+    } catch (err) {
+      error.value = formatError(err, 'Failed to confirm withdrawal.')
       return null
     } finally {
       loading.value = false
@@ -73,24 +133,41 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     error.value = null
     try {
       const response = await api.post('/portfolio/withdraw-funds', { amount })
+      await fetchStatus()
       return response.data
     } catch (err) {
-      error.value = err.response?.data?.detail || 'Failed to withdraw funds.'
+      error.value = formatError(err, 'Failed to withdraw funds.')
       return null
     } finally {
       loading.value = false
     }
   }
 
-  async function rebalance() {
+  async function previewRebalance() {
     loading.value = true
     error.value = null
     try {
-      const response = await api.post('/portfolio/rebalance')
+      const response = await api.post('/portfolio/rebalance-preview')
       rebalancePlan.value = response.data
       return response.data
     } catch (err) {
-      error.value = err.response?.data?.detail || 'Failed to rebalance.'
+      error.value = formatError(err, 'Failed to preview rebalance.')
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function confirmRebalance(plan) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.post('/portfolio/rebalance', plan)
+      rebalancePlan.value = null
+      await fetchStatus()
+      return response.data
+    } catch (err) {
+      error.value = formatError(err, 'Failed to confirm rebalance.')
       return null
     } finally {
       loading.value = false
@@ -105,10 +182,14 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     error,
     totalValue,
     holdings,
-    initializePortfolio,
+    previewInitialize,
+    confirmInitialize,
     fetchStatus,
     addFunds,
     withdrawFunds,
-    rebalance,
+    previewWithdraw,
+    confirmWithdraw,
+    previewRebalance,
+    confirmRebalance,
   }
 })
